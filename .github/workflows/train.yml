@@ -1,0 +1,142 @@
+name: 1. Обучить свою модель (mp3 → midi)
+
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: "Сколько минут учить (GitHub жёстко убивает джоб на ~360)"
+        default: "300"
+      tracks:
+        description: "Сколько произведений взять из MAESTRO"
+        default: "60"
+      max_seconds:
+        description: "Сколько секунд брать с каждого произведения"
+        default: "120"
+      batch_size:
+        description: "Размер батча"
+        default: "8"
+      learning_rate:
+        description: "Learning rate"
+        default: "0.001"
+      steps_per_epoch:
+        description: "Шагов за эпоху"
+        default: "200"
+      init_from_url:
+        description: "URL checkpoint.tar.gz прошлого запуска (продолжить обучение)"
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  train:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 350
+    env:
+      MINUTES: ${{ inputs.minutes }}
+      TRACKS: ${{ inputs.tracks }}
+      MAX_SECONDS: ${{ inputs.max_seconds }}
+      BATCH_SIZE: ${{ inputs.batch_size }}
+      LEARNING_RATE: ${{ inputs.learning_rate }}
+      STEPS_PER_EPOCH: ${{ inputs.steps_per_epoch }}
+      INIT_FROM_URL: ${{ inputs.init_from_url }}
+      TF_CPP_MIN_LOG_LEVEL: "2"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Системные пакеты (fluidsynth для рендера MIDI → аудио, ffmpeg для mp3)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fluidsynth fluid-soundfont-gm ffmpeg
+          fluidsynth --version | head -1
+
+      - name: Python-зависимости
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install basic-pitch==0.4.0 --no-deps
+
+      - name: Кэш MIDI-части MAESTRO (57 МБ)
+        uses: actions/cache@v4
+        with:
+          path: .cache/data
+          key: maestro-midi-v3.0.0
+
+      - name: Чекпойнт для продолжения обучения
+        if: inputs.init_from_url != ''
+        run: |
+          mkdir -p resume && cd resume
+          curl -sSL "$INIT_FROM_URL" -o ckpt.tar.gz
+          tar xzf ckpt.tar.gz
+          echo "RESUME_WEIGHTS=$(find "$PWD" -name 'weights.index' -printf '%h\n' | head -1)" >> "$GITHUB_ENV"
+
+      - name: Готовлю датасет (MIDI → синтезированное аудио)
+        run: |
+          python scripts/prepare_data.py \
+            --out data \
+            --tracks "$TRACKS" \
+            --max-seconds "$MAX_SECONDS"
+          du -sh data
+
+      - name: Обучение
+        run: |
+          EXTRA=""
+          if [ -n "$RESUME_WEIGHTS" ]; then EXTRA="--init-from $RESUME_WEIGHTS"; fi
+          python scripts/train.py \
+            --data data \
+            --out out \
+            --minutes "$MINUTES" \
+            --batch-size "$BATCH_SIZE" \
+            --learning-rate "$LEARNING_RATE" \
+            --steps-per-epoch "$STEPS_PER_EPOCH" \
+            --threads 4 \
+            $EXTRA
+
+      - name: Демо (wav → midi своей моделью)
+        if: always()
+        run: python scripts/make_demo.py --data data --model out/saved_model --out demo || true
+
+      - name: Итог в лог
+        if: always()
+        run: python scripts/report.py out/metrics.json
+
+      - name: Артефакты (модель, чекпойнт, логи, демо)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-run-${{ github.run_number }}
+          path: |
+            out/**
+            demo/**
+          if-no-files-found: warn
+
+      - name: Упаковываю чекпойнт
+        id: pack
+        if: always()
+        run: |
+          if [ -f out/checkpoints/weights.index ]; then
+            tar czf checkpoint.tar.gz -C out checkpoints
+            ls -lh checkpoint.tar.gz
+            echo "ok=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Публикую чекпойнт (чтобы продолжить в следующем запуске)
+        if: always() && steps.pack.outputs.ok == '1'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ckpt-${{ github.run_number }}
+          name: "Чекпойнт после запуска ${{ github.run_number }}"
+          prerelease: true
+          files: checkpoint.tar.gz
+          body: |
+            Продолжить обучение этим чекпойнтом:
+            в поле `init_from_url` следующего запуска вставь ссылку на `checkpoint.tar.gz`
+            из этого релиза.

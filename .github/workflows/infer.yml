@@ -1,0 +1,79 @@
+name: 2. mp3 → midi (готовая модель)
+
+# Запускается сам, когда в папку input/ попадает аудио (можно загрузить
+# прямо с телефона через веб-интерфейс GitHub). MIDI будет в артефактах.
+on:
+  push:
+    paths:
+      - "input/**"
+  workflow_dispatch:
+    inputs:
+      audio_url:
+        description: "Прямая ссылка на mp3 (если пусто — берём файлы из input/)"
+        default: ""
+      model_url:
+        description: "Ссылка на свою модель .tar.gz (если пусто — официальная Basic Pitch)"
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  transcribe:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    env:
+      AUDIO_URL: ${{ inputs.audio_url }}
+      MODEL_URL: ${{ inputs.model_url }}
+      TF_CPP_MIN_LOG_LEVEL: "2"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: ffmpeg (декодирование mp3)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+
+      - name: Python-зависимости
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install basic-pitch==0.4.0 --no-deps
+
+      - name: Готовлю входные файлы
+        run: |
+          mkdir -p input
+          if [ -n "$AUDIO_URL" ]; then
+            curl -sSL "$AUDIO_URL" -o "input/$(basename "${AUDIO_URL%%\?*}")"
+          fi
+          ls -lh input || true
+
+      - name: Своя модель (если указана)
+        if: inputs.model_url != ''
+        run: |
+          mkdir -p custom_model
+          curl -sSL "$MODEL_URL" -o custom_model/model.tar.gz
+          tar xzf custom_model/model.tar.gz -C custom_model
+          DIR=$(find custom_model -name saved_model.pb -printf '%h\n' | head -1)
+          echo "MODEL_PATH=$DIR" >> "$GITHUB_ENV"
+          echo "модель: $DIR"
+
+      - name: Транскрипция
+        run: |
+          EXTRA=""
+          if [ -n "$MODEL_PATH" ]; then EXTRA="--model-path $MODEL_PATH"; fi
+          python scripts/infer.py input -o midi $EXTRA
+
+      - name: Артефакт с MIDI
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: midi-${{ github.run_number }}
+          path: midi/**
+          if-no-files-found: warn

@@ -1,0 +1,16 @@
+# TensorFlow 2.15 — последняя версия, с которой дружит basic-pitch 0.4.0.
+# На GitHub-раннере ставится ~1-2 минуты, GPU не нужен.
+tensorflow==2.15.0
+numpy==1.26.4
+scipy==1.11.4
+librosa==0.10.1
+soundfile==0.12.1
+pretty-midi==0.2.10
+mir_eval==0.7
+scikit-learn==1.3.2
+resampy==0.4.2
+typing-extensions>=4.5
+
+# Сам basic-pitch ставится отдельной строкой в workflow с --no-deps:
+#    pip install basic-pitch==0.4.0 --no-deps
+# иначе pip тянет tflite-runtime (только для Python < 3.11) и падает.

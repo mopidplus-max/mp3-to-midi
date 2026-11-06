@@ -1,0 +1,15 @@
+# данные и результаты — не в git
+data/
+out/
+demo/
+midi/
+.cache/
+resume/
+custom_model/
+checkpoint.tar.gz
+
+# входное аудио НЕ игнорируем: workflow 2 запускается на push в input/
+# (кроме самого .gitkeep)
+
+__pycache__/
+*.pyc
