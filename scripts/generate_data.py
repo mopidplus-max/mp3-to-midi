@@ -31,6 +31,11 @@ import numpy as np
 import pretty_midi
 import soundfile as sf
 
+try:  # чтобы прогресс было видно в логах GitHub сразу, а не в конце
+    sys.stdout.reconfigure(line_buffering=True)
+except Exception:
+    pass
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import SR  # noqa: E402
 

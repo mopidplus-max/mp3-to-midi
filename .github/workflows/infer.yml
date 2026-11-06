@@ -26,6 +26,7 @@ jobs:
       AUDIO_URL: ${{ inputs.audio_url }}
       MODEL_URL: ${{ inputs.model_url }}
       TF_CPP_MIN_LOG_LEVEL: "2"
+      PYTHONUNBUFFERED: "1"
 
     steps:
       - uses: actions/checkout@v4

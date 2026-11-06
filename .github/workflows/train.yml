@@ -49,6 +49,7 @@ jobs:
       STEPS_PER_EPOCH: ${{ inputs.steps_per_epoch }}
       INIT_FROM_URL: ${{ inputs.init_from_url }}
       TF_CPP_MIN_LOG_LEVEL: "2"
+      PYTHONUNBUFFERED: "1"
 
     steps:
       - uses: actions/checkout@v4
