@@ -5,13 +5,19 @@ on:
     inputs:
       minutes:
         description: "Сколько минут учить (GitHub жёстко убивает джоб на ~360)"
-        default: "300"
-      tracks:
-        description: "Сколько произведений взять из MAESTRO"
+        default: "240"
+      gen_minutes:
+        description: "Сколько минут генерировать синтетику (mp3+midi)"
         default: "60"
+      count:
+        description: "Сколько треков сгенерировать за этот запуск"
+        default: "20000"
+      seed:
+        description: "Сид генератора (по умолчанию — номер запуска, т.е. каждый раз новая музыка)"
+        default: ""
       max_seconds:
-        description: "Сколько секунд брать с каждого произведения"
-        default: "120"
+        description: "Максимальная длина одного сгенерированного трека, сек"
+        default: "14"
       batch_size:
         description: "Размер батча"
         default: "8"
@@ -34,7 +40,9 @@ jobs:
     timeout-minutes: 350
     env:
       MINUTES: ${{ inputs.minutes }}
-      TRACKS: ${{ inputs.tracks }}
+      GEN_MINUTES: ${{ inputs.gen_minutes }}
+      COUNT: ${{ inputs.count }}
+      SEED: ${{ inputs.seed }}
       MAX_SECONDS: ${{ inputs.max_seconds }}
       BATCH_SIZE: ${{ inputs.batch_size }}
       LEARNING_RATE: ${{ inputs.learning_rate }}
@@ -55,18 +63,13 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq fluidsynth fluid-soundfont-gm ffmpeg
           fluidsynth --version | head -1
+          ffmpeg -version | head -1
 
       - name: Python-зависимости
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install basic-pitch==0.4.0 --no-deps
-
-      - name: Кэш MIDI-части MAESTRO (57 МБ)
-        uses: actions/cache@v4
-        with:
-          path: .cache/data
-          key: maestro-midi-v3.0.0
 
       - name: Чекпойнт для продолжения обучения
         if: inputs.init_from_url != ''
@@ -76,13 +79,17 @@ jobs:
           tar xzf ckpt.tar.gz
           echo "RESUME_WEIGHTS=$(find "$PWD" -name 'weights.index' -printf '%h\n' | head -1)" >> "$GITHUB_ENV"
 
-      - name: Готовлю датасет (MIDI → синтезированное аудио)
+      - name: Генерирую датасет (mp3+midi, случайные инструменты и стили)
         run: |
-          python scripts/prepare_data.py \
+          if [ -z "$SEED" ]; then SEED="$GITHUB_RUN_NUMBER"; fi
+          python scripts/generate_data.py \
             --out data \
-            --tracks "$TRACKS" \
-            --max-seconds "$MAX_SECONDS"
+            --count "$COUNT" \
+            --minutes "$GEN_MINUTES" \
+            --max-seconds "$MAX_SECONDS" \
+            --seed "$SEED"
           du -sh data
+          cat data/gen_stats.json
 
       - name: Обучение
         run: |
@@ -104,7 +111,9 @@ jobs:
 
       - name: Итог в лог
         if: always()
-        run: python scripts/report.py out/metrics.json
+        run: |
+          cp data/gen_stats.json out/ 2>/dev/null || true
+          python scripts/report.py out/metrics.json
 
       - name: Артефакты (модель, чекпойнт, логи, демо)
         if: always()

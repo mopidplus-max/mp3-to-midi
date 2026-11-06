@@ -65,7 +65,9 @@ def main():
 
     files = collect_inputs(args.inputs)
     if not files:
-        raise SystemExit("Не нашёл ни одного аудиофайла")
+        print("[infer] аудиофайлов не найдено — нечего транскрибировать. "
+              "Положи mp3 в input/ или передай ссылку в audio_url.")
+        return
 
     os.makedirs(args.out, exist_ok=True)
     model = args.model_path or None

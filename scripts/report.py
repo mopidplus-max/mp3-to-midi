@@ -18,6 +18,19 @@ def main():
     lines = [
         "### Обучение закончено",
         "",
+    ]
+
+    gen_path = os.path.join(os.path.dirname(path) or ".", "gen_stats.json")
+    if os.path.exists(gen_path):
+        with open(gen_path) as f:
+            g = json.load(f)
+        lines += [
+            f"- сгенерировано треков: **{g.get('count')}** "
+            f"({g.get('train')} train / {g.get('validation')} val, {g.get('gb')} ГБ)",
+            f"- генерация: {g.get('minutes')} мин, ~{g.get('per_clip_sec')} с на трек",
+        ]
+
+    lines += [
         f"- минут обучения: **{m.get('minutes_used')}**",
         f"- эпох: **{m.get('steps')}**",
         f"- loss: **{m.get('final_loss')}** / val_loss: **{m.get('final_val_loss')}**",
