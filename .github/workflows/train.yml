@@ -5,10 +5,10 @@ on:
     inputs:
       minutes:
         description: "Сколько минут учить (GitHub жёстко убивает джоб на ~360)"
-        default: "240"
+        default: "270"
       gen_minutes:
         description: "Сколько минут генерировать синтетику (mp3+midi)"
-        default: "60"
+        default: "45"
       count:
         description: "Сколько треков сгенерировать за этот запуск"
         default: "20000"

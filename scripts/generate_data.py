@@ -429,8 +429,10 @@ def make_track(job):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="data")
-    ap.add_argument("--count", type=int, default=6000)
+    ap.add_argument("--count", type=int, default=20000)
     ap.add_argument("--minutes", type=float, default=90, help="бюджет времени на генерацию")
+    ap.add_argument("--max-gb", type=float, default=9.0,
+                    help="стоп, если датасет занял столько ГБ (на раннере всего ~14 ГБ)")
     ap.add_argument("--min-seconds", type=float, default=6)
     ap.add_argument("--max-seconds", type=float, default=14)
     ap.add_argument("--noise-prob", type=float, default=0.6)
@@ -479,13 +481,16 @@ def main():
 
     done = 0
     t0 = time.time()
+    bytes_written = 0
+    max_bytes = args.max_gb * 1e9
     with ProcessPoolExecutor(max_workers=workers) as ex:
         futures = {ex.submit(make_track, j): j for j in jobs}
         for fut in as_completed(futures):
-            if time.time() > deadline:
+            if time.time() > deadline or bytes_written > max_bytes:
                 for f in futures:
                     f.cancel()
-                print("[gen] бюджет времени исчерпан — останавливаюсь")
+                reason = "время" if time.time() > deadline else f"диск ({args.max_gb} ГБ)"
+                print(f"[gen] бюджет исчерпан ({reason}) — останавливаюсь")
                 break
             j = futures[fut]
             try:
@@ -496,6 +501,10 @@ def main():
             if not res:
                 continue
             path, style_name, dur, n_notes = res
+            try:
+                bytes_written += os.path.getsize(path)
+            except OSError:
+                pass
             split = "validation" if os.path.basename(path).startswith("validation") else "train"
             index[split].append(path)
             done += 1
