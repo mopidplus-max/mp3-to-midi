@@ -111,6 +111,7 @@ scripts/infer.py              аудио → MIDI (своя или готова�
 scripts/make_demo.py          демо: wav + предсказанный и эталонный midi
 scripts/prepare_data.py       альтернатива: реальные MIDI (MAESTRO) вместо синтеза
 scripts/report.py             итоги в GitHub Step Summary
+scripts/count_pairs.py        сколько пар уже сгенерировано
 ```
 
 Локально:
